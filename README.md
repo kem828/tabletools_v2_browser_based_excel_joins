@@ -4,6 +4,7 @@ A simple, 100% in-browser web application to perform SQL-like operations (Append
 
 This tool runs entirely in your web browser. No data is ever uploaded to a server, ensuring your data remains private and secure on your own computer.
 
+[Use in Browser Now](https://kem828.github.io/tabletools_v2_browser_based_excel_joins/)
 ## **Features**
 
 * **Purely Client-Side:** All processing is done locally using JavaScript.  
