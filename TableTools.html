@@ -1,0 +1,527 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Browser Table Tools</title>
+    <!-- Load Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Load SheetJS (xlsx.js) library for reading/writing Excel and CSV files -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+    <style>
+        /* Simple loading spinner */
+        .loader {
+            border: 4px solid #f3f3f3;
+            border-top: 4px solid #3498db;
+            border-radius: 50%;
+            width: 30px;
+            height: 30px;
+            animation: spin 1s linear infinite;
+        }
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+    </style>
+</head>
+<body class="bg-gray-100 font-sans p-4 md:p-8">
+
+    <div class="max-w-6xl mx-auto bg-white rounded-lg shadow-xl p-6 md:p-8">
+        
+        <header class="mb-8">
+            <h1 class="text-3xl md:text-4xl font-bold text-gray-800">Browser Table Tools</h1>
+            <p class="text-lg text-gray-600 mt-2">Perform SQL-like operations (Append, Join) on your CSV or Excel files.</p>
+            <p class="text-sm text-blue-600 mt-1">All processing is done 100% in your browser. No data is uploaded.</p>
+        </header>
+
+        <!-- Main Application -->
+        <main id="app">
+
+            <!-- 1. File Upload -->
+            <section id="file-upload-section" class="mb-6">
+                <h2 class="text-2xl font-semibold text-gray-700 mb-3">1. Upload Files</h2>
+                <div class="border-2 border-dashed border-gray-300 rounded-lg p-6 text-center">
+                    <input type="file" id="file-uploader" multiple 
+                           class="block w-full text-sm text-gray-500
+                                  file:mr-4 file:py-2 file:px-4
+                                  file:rounded-full file:border-0
+                                  file:text-sm file:font-semibold
+                                  file:bg-blue-50 file:text-blue-700
+                                  hover:file:bg-blue-100"
+                           accept=".csv,.xlsx,.xls">
+                    <p class="text-xs text-gray-500 mt-2">Upload one or more .csv, .xls, or .xlsx files.</p>
+                </div>
+                <div id="file-list" class="mt-4 space-y-3">
+                    <!-- Loaded files will be listed here -->
+                </div>
+            </section>
+
+            <!-- 2. Operation -->
+            <section id="operation-section" class="mb-6 hidden">
+                <h2 class="text-2xl font-semibold text-gray-700 mb-3">2. Choose Operation</h2>
+                <select id="operation-select" class="w-full md:w-1/3 p-3 border border-gray-300 rounded-lg bg-white shadow-sm focus:ring-2 focus:ring-blue-500 focus:outline-none">
+                    <option value="none" selected disabled>Select an operation...</option>
+                    <option value="append">Append (Union)</option>
+                    <option value="inner-join">Inner Join</option>
+                    <option value="left-join">Left Join</option>
+                    <option value="right-join">Right Join</option>
+                    <option value="outer-join">Outer Join</option>
+                </select>
+            </section>
+
+            <!-- 3. Configuration -->
+            <section id="config-section" class="mb-6 hidden">
+                <h2 class="text-2xl font-semibold text-gray-700 mb-3">3. Configure Operation</h2>
+                
+                <!-- Config for Append -->
+                <div id="config-append" class="hidden space-y-4 p-4 bg-gray-50 rounded-lg border">
+                    <div>
+                        <label for="append-table1" class="block text-sm font-medium text-gray-700">Table 1 (Base Table)</label>
+                        <select id="append-table1" class="table-select mt-1 block w-full p-2 border border-gray-300 rounded-md shadow-sm"></select>
+                    </div>
+                    <div>
+                        <label for="append-table2" class="block text-sm font-medium text-gray-700">Table 2 (Table to Append)</label>
+                        <select id="append-table2" class="table-select mt-1 block w-full p-2 border border-gray-300 rounded-md shadow-sm"></select>
+                    </div>
+                    <p class="text-xs text-gray-600"><strong>Append</strong> stacks tables on top of each other. For best results, both tables should have similar column names.</p>
+                </div>
+
+                <!-- Config for Joins -->
+                <div id="config-join" class="hidden grid grid-cols-1 md:grid-cols-2 gap-6 p-4 bg-gray-50 rounded-lg border">
+                    <!-- Left Table Config -->
+                    <div class="space-y-4">
+                        <p class="font-semibold text-lg text-gray-800">Left Table</p>
+                        <div>
+                            <label for="join-table-left" class="block text-sm font-medium text-gray-700">1. Select Left Table</label>
+                            <select id="join-table-left" class="table-select key-selector-source mt-1 block w-full p-2 border border-gray-300 rounded-md shadow-sm" data-target="join-key-left"></select>
+                        </div>
+                        <div>
+                            <label for="join-key-left" class="block text-sm font-medium text-gray-700">2. Select Join Key</label>
+                            <select id="join-key-left" class="key-select mt-1 block w-full p-2 border border-gray-300 rounded-md shadow-sm" disabled>
+                                <option>Select table first...</option>
+                            </select>
+                        </div>
+                    </div>
+                    <!-- Right Table Config -->
+                    <div class="space-y-4">
+                        <p class="font-semibold text-lg text-gray-800">Right Table</p>
+                        <div>
+                            <label for="join-table-right" class="block text-sm font-medium text-gray-700">1. Select Right Table</label>
+                            <select id="join-table-right" class="table-select key-selector-source mt-1 block w-full p-2 border border-gray-300 rounded-md shadow-sm" data-target="join-key-right"></select>
+                        </div>
+                        <div>
+                            <label for="join-key-right" class="block text-sm font-medium text-gray-700">2. Select Join Key</label>
+                            <select id="join-key-right" class="key-select mt-1 block w-full p-2 border border-gray-300 rounded-md shadow-sm" disabled>
+                                <option>Select table first...</option>
+                            </select>
+                        </div>
+                    </div>
+                </div>
+
+                <button id="run-operation" class="mt-6 w-full md:w-auto bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 px-6 rounded-lg shadow-md transition duration-150 ease-in-out disabled:opacity-50 disabled:cursor-not-allowed" disabled>
+                    Run Operation
+                </button>
+            </section>
+
+            <!-- 4. Result -->
+            <section id="result-section" class="hidden">
+                <h2 class="text-2xl font-semibold text-gray-700 mb-3">4. Result</h2>
+                <div class="flex justify-between items-center mb-4">
+                    <p id="result-summary" class="text-gray-600">Operation successful.</p>
+                    <button id="download-result" class="bg-green-600 hover:bg-green-700 text-white font-bold py-2 px-4 rounded-lg shadow-md transition duration-150 ease-in-out">
+                        Download as .xlsx
+                    </button>
+                </div>
+                <!-- Preview Table -->
+                <div id="result-preview" class="w-full overflow-x-auto border border-gray-200 rounded-lg bg-white">
+                    <table class="min-w-full divide-y divide-gray-200">
+                        <thead id="result-thead" class="bg-gray-50">
+                            <!-- Headers will be injected here -->
+                        </thead>
+                        <tbody id="result-tbody" class="bg-white divide-y divide-gray-200">
+                            <!-- Rows will be injected here -->
+                        </tbody>
+                    </table>
+                </div>
+                <p class="text-xs text-gray-500 mt-2">Showing a preview of the first 100 rows.</p>
+            </section>
+        
+        </main>
+    </div>
+
+    <script>
+        // Store for parsed file data
+        // Format: { "filename.xlsx": { name: "filename.xlsx", headers: ["col1", "col2"], data: [{col1: "a", col2: "b"}, ...] } }
+        const uploadedFiles = {};
+        let globalResultData = []; // Store the full result for download
+
+        // DOM Elements
+        const fileUploader = document.getElementById('file-uploader');
+        const fileList = document.getElementById('file-list');
+        const operationSection = document.getElementById('operation-section');
+        const operationSelect = document.getElementById('operation-select');
+        const configSection = document.getElementById('config-section');
+        const configAppend = document.getElementById('config-append');
+        const configJoin = document.getElementById('config-join');
+        const runOperationBtn = document.getElementById('run-operation');
+        const resultSection = document.getElementById('result-section');
+        const resultSummary = document.getElementById('result-summary');
+        const resultThead = document.getElementById('result-thead');
+        const resultTbody = document.getElementById('result-tbody');
+        const downloadResultBtn = document.getElementById('download-result');
+
+        // --- 1. File Upload Logic ---
+        fileUploader.addEventListener('change', handleFileChange);
+
+        function handleFileChange(event) {
+            const files = event.target.files;
+            if (!files.length) return;
+
+            Array.from(files).forEach(file => {
+                // Show loading indicator
+                const fileId = `file-${Date.now()}-${Math.random()}`;
+                const fileItem = document.createElement('div');
+                fileItem.id = fileId;
+                fileItem.className = 'flex items-center justify-between p-3 bg-gray-50 rounded-lg border';
+                fileItem.innerHTML = `
+                    <span class="font-medium text-gray-700">${file.name}</span>
+                    <div class="loader"></div>
+                `;
+                fileList.appendChild(fileItem);
+
+                // Read and parse file
+                const reader = new FileReader();
+                reader.onload = (e) => {
+                    try {
+                        const data = e.target.result;
+                        const workbook = XLSX.read(data, { type: 'array' });
+                        const sheetName = workbook.SheetNames[0];
+                        const worksheet = workbook.Sheets[sheetName];
+                        const jsonData = XLSX.utils.sheet_to_json(worksheet, { defval: null });
+                        const headers = jsonData.length > 0 ? Object.keys(jsonData[0]) : [];
+
+                        // Store parsed data
+                        uploadedFiles[file.name] = {
+                            name: file.name,
+                            headers: headers,
+                            data: jsonData
+                        };
+
+                        // Update UI
+                        updateFileList(fileId, file.name, jsonData.length, headers.length);
+                        updateOperationUI();
+
+                    } catch (err) {
+                        console.error("Error parsing file:", err);
+                        fileItem.innerHTML = `
+                            <span class="font-medium text-red-500">${file.name} - Failed to parse</span>
+                            <button class="text-red-500 hover:text-red-700" onclick="document.getElementById('${fileId}').remove()">X</button>
+                        `;
+                    }
+                };
+                reader.onerror = (err) => {
+                     console.error("Error reading file:", err);
+                     fileItem.innerHTML = `
+                        <span class="font-medium text-red-500">${file.name} - Failed to read</span>
+                        <button class="text-red-500 hover:text-red-700" onclick="document.getElementById('${fileId}').remove()">X</button>
+                    `;
+                };
+                reader.readAsArrayBuffer(file);
+            });
+
+            // Clear the uploader value to allow re-uploading the same file
+            event.target.value = null;
+        }
+
+        function updateFileList(fileId, name, rowCount, colCount) {
+            const fileItem = document.getElementById(fileId);
+            fileItem.innerHTML = `
+                <div>
+                    <span class="font-medium text-green-700">${name}</span>
+                    <span class="text-sm text-gray-500 ml-2">(${rowCount} rows, ${colCount} cols)</span>
+                </div>
+                <button class="text-red-500 hover:text-red-700 text-sm font-bold" title="Remove file" onclick="removeFile(event, '${name}')">REMOVE</button>
+            `;
+        }
+
+        function removeFile(event, fileName) {
+            event.preventDefault();
+            // Remove from DOM
+            event.target.closest('.flex').remove();
+            // Remove from data store
+            delete uploadedFiles[fileName];
+            // Update UI
+            updateOperationUI();
+        }
+
+        // --- 2. Operation Selection Logic ---
+        function updateOperationUI() {
+            const fileCount = Object.keys(uploadedFiles).length;
+            
+            // Hide everything if no files
+            if (fileCount === 0) {
+                operationSection.classList.add('hidden');
+                configSection.classList.add('hidden');
+                resultSection.classList.add('hidden');
+                return;
+            }
+
+            // Show operation select if at least one file
+            operationSection.classList.remove('hidden');
+
+            // Populate table select dropdowns
+            const fileNames = Object.keys(uploadedFiles);
+            const optionsHtml = fileNames.map(name => `<option value="${name}">${name}</option>`).join('');
+            
+            document.querySelectorAll('.table-select').forEach(select => {
+                const currentVal = select.value;
+                select.innerHTML = `<option value="none" selected disabled>Select a table...</option>` + optionsHtml;
+                // Try to preserve selection
+                if (fileNames.includes(currentVal)) {
+                    select.value = currentVal;
+                } else {
+                    select.value = "none";
+                }
+            });
+
+            // Trigger key dropdown update for join config
+            document.querySelectorAll('.key-selector-source').forEach(select => {
+                if (select.value !== 'none') {
+                    updateKeyDropdown(select);
+                }
+            });
+            
+            // Show config if an operation is selected
+            showConfigUI();
+        }
+
+        operationSelect.addEventListener('change', showConfigUI);
+
+        function showConfigUI() {
+            const operation = operationSelect.value;
+            
+            // Hide all configs first
+            configAppend.classList.add('hidden');
+            configJoin.classList.add('hidden');
+            
+            if (operation === 'none') {
+                configSection.classList.add('hidden');
+                return;
+            }
+
+            configSection.classList.remove('hidden');
+            if (operation === 'append') {
+                configAppend.classList.remove('hidden');
+            } else if (operation.includes('join')) {
+                configJoin.classList.remove('hidden');
+            }
+
+            validateForm();
+        }
+
+        // --- 3. Configuration Logic ---
+        
+        // Update key dropdowns when a table is selected for join
+        document.querySelectorAll('.key-selector-source').forEach(select => {
+            select.addEventListener('change', (e) => updateKeyDropdown(e.target));
+        });
+
+        function updateKeyDropdown(tableSelect) {
+            const tableName = tableSelect.value;
+            const targetKeySelectId = tableSelect.dataset.target;
+            const keySelect = document.getElementById(targetKeySelectId);
+
+            if (tableName === 'none' || !uploadedFiles[tableName]) {
+                keySelect.innerHTML = '<option>Select table first...</option>';
+                keySelect.disabled = true;
+            } else {
+                const headers = uploadedFiles[tableName].headers;
+                keySelect.innerHTML = headers.map(h => `<option value="${h}">${h}</option>`).join('');
+                keySelect.disabled = false;
+            }
+            validateForm();
+        }
+
+        // Form validation
+        document.querySelectorAll('#config-section select').forEach(el => {
+            el.addEventListener('change', validateForm);
+        });
+
+        function validateForm() {
+            const operation = operationSelect.value;
+            let isValid = false;
+
+            if (operation === 'append') {
+                isValid = document.getElementById('append-table1').value !== 'none' &&
+                          document.getElementById('append-table2').value !== 'none';
+            } else if (operation.includes('join')) {
+                isValid = document.getElementById('join-table-left').value !== 'none' &&
+                          document.getElementById('join-key-left').value !== 'none' &&
+                          document.getElementById('join-table-right').value !== 'none' &&
+                          document.getElementById('join-key-right').value !== 'none';
+            }
+            runOperationBtn.disabled = !isValid;
+        }
+
+        // --- 4. Run Operation Logic ---
+        runOperationBtn.addEventListener('click', runOperation);
+
+        function runOperation() {
+            const operation = operationSelect.value;
+            globalResultData = []; // Clear previous results
+
+            try {
+                switch (operation) {
+                    case 'append':
+                        performAppend();
+                        break;
+                    case 'inner-join':
+                    case 'left-join':
+                    case 'right-join':
+                    case 'outer-join':
+                        performJoin(operation);
+                        break;
+                }
+                displayResult(globalResultData);
+            } catch (err) {
+                console.error("Error during operation:", err);
+                alert("An error occurred: " + err.message);
+            }
+        }
+
+        function performAppend() {
+            const table1Name = document.getElementById('append-table1').value;
+            const table2Name = document.getElementById('append-table2').value;
+
+            const table1Data = uploadedFiles[table1Name].data;
+            const table2Data = uploadedFiles[table2Name].data;
+            
+            // Simple concatenation.
+            // A more advanced version would align columns.
+            globalResultData = [...table1Data, ...table2Data];
+        }
+
+        function performJoin(joinType) {
+            const leftTableName = document.getElementById('join-table-left').value;
+            const leftKey = document.getElementById('join-key-left').value;
+            const rightTableName = document.getElementById('join-table-right').value;
+            const rightKey = document.getElementById('join-key-right').value;
+
+            const leftTable = uploadedFiles[leftTableName].data;
+            const rightTable = uploadedFiles[rightTableName].data;
+            const leftHeaders = uploadedFiles[leftTableName].headers;
+            const rightHeaders = uploadedFiles[rightTableName].headers.filter(h => h !== rightKey); // Avoid duplicating key
+
+            // Build a Map from the right table for efficient lookups
+            // The value in the map is an array of matching rows (to handle non-unique keys)
+            const rightTableMap = new Map();
+            for (const rightRow of rightTable) {
+                const key = rightRow[rightKey];
+                if (!rightTableMap.has(key)) {
+                    rightTableMap.set(key, []);
+                }
+                rightTableMap.get(key).push(rightRow);
+            }
+
+            const result = [];
+            const rightRowsMatched = new Set(); // Keep track of matched right rows for right/outer joins
+
+            // Create null-padded objects for non-matches
+            const nullPaddedRight = {};
+            rightHeaders.forEach(h => { nullPaddedRight[h] = null; });
+            
+            const nullPaddedLeft = {};
+            leftHeaders.forEach(h => { nullPaddedLeft[h] = null; });
+
+            // --- Iterate Left Table (for Inner, Left, Outer) ---
+            for (const leftRow of leftTable) {
+                const key = leftRow[leftKey];
+                const matchingRightRows = rightTableMap.get(key);
+                
+                if (matchingRightRows) {
+                    // Match found - add all combinations
+                    for (const rightRow of matchingRightRows) {
+                        const { [rightKey]: _, ...rightRowWithoutKey } = rightRow; // Remove right key
+                        result.push({ ...leftRow, ...rightRowWithoutKey });
+                        
+                        // Track the index of the matched right row
+                        rightRowsMatched.add(rightRow); 
+                    }
+                } else if (joinType === 'left-join' || joinType === 'outer-join') {
+                    // No match, but it's a Left or Outer join
+                    result.push({ ...leftRow, ...nullPaddedRight });
+                }
+            }
+
+            // --- Iterate Right Table (for Right, Outer) ---
+            if (joinType === 'right-join' || joinType === 'outer-join') {
+                for (const rightRow of rightTable) {
+                    if (!rightRowsMatched.has(rightRow)) {
+                        // This right row was not matched by any left row
+                        const { [rightKey]: _, ...rightRowWithoutKey } = rightRow;
+                        // Add left-padded row, but key needs to come from right row
+                        const mergedRow = { ...nullPaddedLeft, ...rightRowWithoutKey, [leftKey]: rightRow[rightKey] };
+                        result.push(mergedRow);
+                    }
+                }
+            }
+            
+            globalResultData = result;
+        }
+
+
+        // --- 5. Result Display & Download ---
+        function displayResult(data) {
+            if (!data.length) {
+                resultSummary.textContent = "Operation resulted in 0 rows.";
+                resultThead.innerHTML = "";
+                resultTbody.innerHTML = '<tr><td colspan="99" class="p-4 text-center text-gray-500">No data to display.</td></tr>';
+                resultSection.classList.remove('hidden');
+                return;
+            }
+
+            // Get headers from the first row
+            const headers = Object.keys(data[0]);
+            resultThead.innerHTML = `
+                <tr>
+                    ${headers.map(h => `<th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">${h}</th>`).join('')}
+                </tr>
+            `;
+
+            // Get rows (preview first 100)
+            const previewData = data.slice(0, 100);
+            resultTbody.innerHTML = previewData.map(row => `
+                <tr class="hover:bg-gray-50">
+                    ${headers.map(h => `<td class="px-6 py-4 whitespace-nowrap text-sm text-gray-700">${row[h] === null ? '<em>null</em>' : row[h]}</td>`).join('')}
+                </tr>
+            `).join('');
+
+            resultSummary.textContent = `Operation complete. Result has ${data.length} rows.`;
+            resultSection.classList.remove('hidden');
+            
+            // Scroll to results
+            resultSection.scrollIntoView({ behavior: 'smooth' });
+        }
+
+        downloadResultBtn.addEventListener('click', () => {
+            if (!globalResultData.length) {
+                alert("No data to download.");
+                return;
+            }
+            
+            // Create a new worksheet from the JSON data
+            const ws = XLSX.utils.json_to_sheet(globalResultData);
+            
+            // Create a new workbook
+            const wb = XLSX.utils.book_new();
+            
+            // Append the worksheet to the workbook
+            XLSX.utils.book_append_sheet(wb, ws, "Result");
+            
+            // Write the workbook and trigger a download
+            XLSX.writeFile(wb, "table_tools_result.xlsx");
+        });
+
+    </script>
+</body>
+</html>
